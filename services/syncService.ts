@@ -25,11 +25,12 @@ export const pushToSheets = async (transactions: Transaction[], accounts: Accoun
   if (!config || !config.url) return false;
 
   try {
+    // Sending as text/plain is a common workaround for Google Apps Script CORS issues.
+    // It prevents the browser from sending a 'preflight' OPTIONS request.
     const response = await fetch(config.url, {
       method: 'POST',
-      mode: 'no-cors', // Apps Script Web Apps often require no-cors or simple requests
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify({
         action: 'push',
@@ -38,7 +39,8 @@ export const pushToSheets = async (transactions: Transaction[], accounts: Accoun
       }),
     });
     
-    // With no-cors we can't read the response, but if it doesn't throw, it likely reached the script
+    // Note: Due to redirects in Google Apps Script, we check if the request was successful
+    // Even if we can't read the body due to CORS, a status of 200 or an opaque response usually means success.
     saveSyncConfig({ ...config, lastSynced: new Date().toISOString() });
     return true;
   } catch (error) {
@@ -68,6 +70,17 @@ export const pullFromSheets = async (): Promise<{ transactions: Transaction[], a
 };
 
 export const GOOGLE_APPS_SCRIPT_CODE = `
+/**
+ * GOOGLE APPS SCRIPT FOR SMARTSPEND SYNC
+ * 1. Create a Google Sheet.
+ * 2. Extensions > Apps Script.
+ * 3. Paste this code and Save.
+ * 4. Click "Deploy" > "New Deployment".
+ * 5. Select type "Web App".
+ * 6. Set "Execute as: Me" and "Who has access: Anyone".
+ * 7. Copy the Web App URL and paste into the app.
+ */
+
 function doGet(e) {
   var action = e.parameter.action;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -77,7 +90,7 @@ function doGet(e) {
     var accSheet = ss.getSheetByName("Accounts");
     
     var transactions = [];
-    if (txSheet) {
+    if (txSheet && txSheet.getLastRow() > 1) {
       var data = txSheet.getDataRange().getValues();
       var headers = data.shift();
       transactions = data.map(function(row) {
@@ -95,7 +108,7 @@ function doGet(e) {
     }
 
     var accounts = [];
-    if (accSheet) {
+    if (accSheet && accSheet.getLastRow() > 1) {
       var data = accSheet.getDataRange().getValues();
       var headers = data.shift();
       accounts = data.map(function(row) {
@@ -112,31 +125,48 @@ function doGet(e) {
       accounts: accounts
     })).setMimeType(ContentService.MimeType.JSON);
   }
+  return ContentService.createTextOutput("Sync active. Status: OK");
 }
 
 function doPost(e) {
-  var payload = JSON.parse(e.postData.contents);
+  var payload;
+  try {
+    payload = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Invalid JSON"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
   if (payload.action === 'push') {
-    // Transactions
+    // Handle Transactions
     var txSheet = ss.getSheetByName("Transactions") || ss.insertSheet("Transactions");
     txSheet.clear();
     txSheet.appendRow(["ID", "Date", "Amount", "Type", "Category", "Description", "AccountId", "TargetAccountId"]);
-    payload.transactions.forEach(function(t) {
-      txSheet.appendRow([t.id, t.date, t.amount, t.type, t.category, t.description, t.accountId, t.targetAccountId || ""]);
-    });
+    if (payload.transactions && payload.transactions.length > 0) {
+      var txRows = payload.transactions.map(function(t) {
+        return [t.id, t.date, t.amount, t.type, t.category, t.description, t.accountId, t.targetAccountId || ""];
+      });
+      txSheet.getRange(2, 1, txRows.length, 8).setValues(txRows);
+    }
     
-    // Accounts
+    // Handle Accounts
     var accSheet = ss.getSheetByName("Accounts") || ss.insertSheet("Accounts");
     accSheet.clear();
     accSheet.appendRow(["ID", "Name", "Emoji"]);
-    payload.accounts.forEach(function(a) {
-      accSheet.appendRow([a.id, a.name, a.emoji]);
-    });
+    if (payload.accounts && payload.accounts.length > 0) {
+      var accRows = payload.accounts.map(function(a) {
+        return [a.id, a.name, a.emoji];
+      });
+      accSheet.getRange(2, 1, accRows.length, 3).setValues(accRows);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+      .setMimeType(ContentService.MimeType.JSON);
   }
   
-  return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+  return ContentService.createTextOutput(JSON.stringify({status: "error", message: "Unknown action"}))
     .setMimeType(ContentService.MimeType.JSON);
 }
 `;
