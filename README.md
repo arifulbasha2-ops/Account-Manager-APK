@@ -18,3 +18,31 @@ View your app in AI Studio: https://ai.studio/apps/drive/1YhlzjUYmstQncoEutncBZg
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+```
+
+## Android APK / AAB (Capacitor + CI)
+
+This project can be packaged as an Android app using Capacitor.
+A GitHub Actions workflow was added at `.github/workflows/android-build.yml` to:
+
+- Build the web app (Vite)
+- Ensure Capacitor Android platform
+- Produce a debug APK artifact
+- Optionally produce a signed release AAB when signing secrets are provided
+
+### CI signing secrets
+
+If you want CI to produce a signed release AAB, add these repository secrets:
+- `KEYSTORE_BASE64` — Base64-encoded keystore file contents (JKS or PKCS12)
+- `KEYSTORE_PASSWORD` — Keystore password
+- `KEY_ALIAS` — Key alias
+- `KEY_PASSWORD` — Key password
+
+The workflow decodes the keystore into `release_keystore/keystore.jks` and passes signing properties to Gradle.
+
+### Run locally (summary)
+
+- Build web assets: `npm run build`
+- Copy into Android project: `npx cap copy`
+- Open in Android Studio: `npx cap open android`
+- CLI debug build: `npm run android:build:debug` (or `cd android && ./gradlew assembleDebug`)
