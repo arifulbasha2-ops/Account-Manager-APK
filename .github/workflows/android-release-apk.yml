@@ -83,11 +83,59 @@ EOF
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      - name: Validate release APK
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          APK_UNSIGNED="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ -f "$APK" ]; then
+            echo "Found signed APK: $APK"
+            $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest print "$APK"
+            APP_ID=$($ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$APK" | tr -d '\r\n')
+            VERSION_CODE=$($ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest versionCode "$APK" | tr -d '\r\n')
+            echo "Application ID: $APP_ID"
+            echo "Version code: $VERSION_CODE"
+            if [ -z "$APP_ID" ] || [ -z "$VERSION_CODE" ]; then
+              echo "Manifest missing required fields"; exit 1
+            fi
+            SZ=$(stat -c%s "$APK")
+            if [ "$SZ" -lt 1000 ]; then echo "APK suspiciously small ($SZ bytes)"; exit 1; fi
+            if [ -f ../release_keystore/keystore.jks ]; then
+              echo "Keystore provided — verifying APK signature..."
+              $ANDROID_SDK_ROOT/build-tools/33.0.2/apksigner verify --print-certs "$APK"
+            else
+              echo "No keystore provided; apksigner verify will run but build will not fail if unsigned."
+              $ANDROID_SDK_ROOT/build-tools/33.0.2/apksigner verify --print-certs "$APK" || echo "APK is unsigned or verification failed"
+            fi
+          elif [ -f "$APK_UNSIGNED" ]; then
+            echo "Signed APK not found, using unsigned APK: $APK_UNSIGNED"
+            $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest print "$APK_UNSIGNED"
+            APP_ID=$($ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest application-id "$APK_UNSIGNED" | tr -d '\r\n')
+            VERSION_CODE=$($ANDROID_SDK_ROOT/cmdline-tools/latest/bin/apkanalyzer manifest versionCode "$APK_UNSIGNED" | tr -d '\r\n')
+            echo "Application ID: $APP_ID"
+            echo "Version code: $VERSION_CODE"
+            if [ -z "$APP_ID" ] || [ -z "$VERSION_CODE" ]; then
+              echo "Manifest missing required fields"; exit 1
+            fi
+            SZ=$(stat -c%s "$APK_UNSIGNED")
+            if [ "$SZ" -lt 1000 ]; then echo "APK suspiciously small ($SZ bytes)"; exit 1; fi
+          else
+            echo "No release APK produced"; exit 1
+          fi
+
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release-apk
           path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Create GitHub Release and attach APK(s)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/apk/release/app-release-unsigned.apk
 

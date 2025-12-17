@@ -58,3 +58,5 @@ Required signing secrets (set in repository settings):
 - `KEY_PASSWORD` — Key password
 
 If secrets are missing the workflow will attempt to build a release APK (unsigned) and upload whatever release APK artifact was produced.
+
+When a tag (v*) is pushed the workflow now also creates a **GitHub Release** and attaches the built APK(s) to the Release for easy downloads by QA or other contributors.
