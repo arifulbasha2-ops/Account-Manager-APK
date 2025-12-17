@@ -1,5 +1,9 @@
 {
   "name": "Account Manager APK",
-  "description": "A comprehensive financial tracking application that manages daily expenses, income, and savings. Features AI-powered financial insights using Gemini to analyze spending habits.",
-  "requestFramePermissions": []
+  "description": "A comprehensive financial tracking application that manages daily expenses, income, and savings. Features AI-powered financial insights and automatic Google Sheets synchronization.",
+  "requestFramePermissions": [],
+  "permissions": [
+    "INTERNET",
+    "ACCESS_NETWORK_STATE"
+  ]
 }

@@ -1,3 +1,4 @@
+
 import { Transaction, Account } from '../types';
 
 const SYNC_CONFIG_KEY = 'smartspend_sheets_sync_v1';
@@ -24,11 +25,14 @@ export const pushToSheets = async (transactions: Transaction[], accounts: Accoun
   const config = getSyncConfig();
   if (!config || !config.url) return false;
 
+  // Use an AbortController for a 30-second timeout, helpful for spotty mobile data
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
   try {
-    // Sending as text/plain is a common workaround for Google Apps Script CORS issues.
-    // It prevents the browser from sending a 'preflight' OPTIONS request.
     const response = await fetch(config.url, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
@@ -39,10 +43,15 @@ export const pushToSheets = async (transactions: Transaction[], accounts: Accoun
       }),
     });
     
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) return false;
+    
     saveSyncConfig({ ...config, lastSynced: new Date().toISOString() });
     return true;
   } catch (error) {
     console.error('Push to Sheets failed:', error);
+    clearTimeout(timeoutId);
     return false;
   }
 };
@@ -51,8 +60,15 @@ export const pullFromSheets = async (): Promise<{ transactions: Transaction[], a
   const config = getSyncConfig();
   if (!config || !config.url) return null;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
   try {
-    const response = await fetch(`${config.url}?action=pull`);
+    const response = await fetch(`${config.url}?action=pull`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
     if (!response.ok) throw new Error('Pull failed');
     const data = await response.json();
     
@@ -63,13 +79,14 @@ export const pullFromSheets = async (): Promise<{ transactions: Transaction[], a
     return null;
   } catch (error) {
     console.error('Pull from Sheets failed:', error);
+    clearTimeout(timeoutId);
     return null;
   }
 };
 
 export const GOOGLE_APPS_SCRIPT_CODE = `
 /**
- * GOOGLE APPS SCRIPT FOR SMARTSPEND SYNC
+ * GOOGLE APPS SCRIPT FOR ACCOUNT MANAGER SYNC
  * 1. Create a Google Sheet.
  * 2. Extensions > Apps Script.
  * 3. Paste this code and Save.
