@@ -46,3 +46,15 @@ The workflow decodes the keystore into `release_keystore/keystore.jks` and passe
 - Copy into Android project: `npx cap copy`
 - Open in Android Studio: `npx cap open android`
 - CLI debug build: `npm run android:build:debug` (or `cd android && ./gradlew assembleDebug`)
+
+### Build a signed release APK in CI
+
+A separate workflow (`.github/workflows/android-release-apk.yml`) builds a signed release APK on a tag push (v*) or when run manually.
+
+Required signing secrets (set in repository settings):
+- `KEYSTORE_BASE64` — Base64-encoded keystore file (JKS/PKCS12)
+- `KEYSTORE_PASSWORD` — Keystore password
+- `KEY_ALIAS` — Key alias
+- `KEY_PASSWORD` — Key password
+
+If secrets are missing the workflow will attempt to build a release APK (unsigned) and upload whatever release APK artifact was produced.
